@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>モンスト反射シミュレーター</title>
+<style>
+:root{
+  --bg:#f3f0e9; --panel:#fffdf9; --ink:#1b1915; --sub:#6b6558; --line:#ddd5c3; --soft:#e8e2d3;
+  --accent:#16233d; --accent-ink:#ecd9a0; --danger:#a8322a;
+  --gold:linear-gradient(180deg,#d9b966,#b38d3c); --gold-ink:#1d1608; --gold-line:#b8963f;
+  --bar:#0c1424; --bar-ink:#ecd9a0; --shadow:0 1px 2px rgba(30,25,10,.08),0 4px 14px rgba(30,25,10,.06);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#090d14; --panel:#121923; --ink:#ece6d6; --sub:#9a9484; --line:#262f3d; --soft:#1a222e;
+    --accent:#d4b565; --accent-ink:#171205; --danger:#ff8274;
+    --bar:#060910; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#090d14; --panel:#121923; --ink:#ece6d6; --sub:#9a9484; --line:#262f3d; --soft:#1a222e;
+  --accent:#d4b565; --accent-ink:#171205; --danger:#ff8274;
+  --bar:#060910; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 "Hiragino Sans","Noto Sans JP",system-ui,sans-serif;letter-spacing:.02em}
+.bar{background:linear-gradient(180deg,var(--bar),color-mix(in srgb,var(--bar) 82%,#2a3550));
+  color:var(--bar-ink);border-bottom:1px solid var(--gold-line);box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.bar-in{max-width:640px;margin:0 auto;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{font:600 17px/1.3 "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;letter-spacing:.14em;margin:0}
+main{max-width:640px;margin:0 auto;padding:14px 12px}
+#stage{background:var(--panel);border:1px solid var(--gold-line);border-radius:6px;overflow:hidden;line-height:0;
+  box-shadow:var(--shadow)}
+canvas{width:100%;display:block;touch-action:none}
+button,.btn{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+  border-radius:6px;padding:8px 12px;min-height:44px;cursor:pointer;touch-action:manipulation;
+  display:inline-flex;align-items:center;justify-content:center;text-align:center;box-shadow:var(--shadow)}
+button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--gold-line);font-weight:700}
+button.primary,.btn.primary{background:var(--gold);color:var(--gold-ink);border-color:var(--gold-line);
+  font-weight:700;text-shadow:0 1px 0 rgba(255,255,255,.25)}
+.bar .btn{min-height:40px;box-shadow:none;letter-spacing:.06em}
+button.danger{color:var(--danger)}
+button:active,.btn:active{filter:brightness(.94)}
+button:focus-visible,.btn:focus-visible{outline:2px solid var(--gold-line);outline-offset:2px}
+input[type=file]{display:none}
+.empty{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:56px 12px;
+  text-align:center;color:var(--sub);letter-spacing:.2em;box-shadow:var(--shadow)}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin:14px 0 10px;
+  border-bottom:1px solid var(--line)}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;box-shadow:none;
+  min-height:44px;padding:6px 2px;font-weight:600;color:var(--sub);letter-spacing:.12em}
+.tabs button.on{background:transparent;color:var(--ink);border-bottom-color:var(--gold-line)}
+.sub{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.sub[hidden]{display:none}
+.sub button{flex:1 1 40%}
+.sub.fit button{flex:1 1 0;min-width:0;letter-spacing:.08em}
+.det{margin:4px 2px;font-size:13px;color:var(--sub)}
+.det:empty{display:none}
+.card{background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--gold-line);border-radius:6px;
+  padding:4px 14px;margin:14px 0;box-shadow:var(--shadow)}
+.line{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0}
+.line + .line{border-top:1px solid var(--line)}
+.line > span:first-child{color:var(--sub);font-weight:600;letter-spacing:.12em}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper button{width:48px;padding:0;font-size:22px;line-height:1}
+.stepper output{min-width:56px;text-align:center;font:600 22px/1 "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<header class="bar"><div class="bar-in">
+  <h1>反射シミュレーター</h1>
+  <label class="btn primary" for="file">画像を選ぶ</label>
+  <input id="file" type="file" accept="image/*">
+</div></header>
+<main>
+  <p id="loadMsg" class="det" aria-live="polite"></p>
+
+  <div id="stage" hidden><canvas id="cv"></canvas></div>
+  <div id="empty" class="empty">画像が未選択です</div>
+
+  <div class="tabs" role="tablist">
+    <button id="m-pos" class="on" role="tab">ボール</button>
+    <button id="m-aim" role="tab">方向</button>
+    <button id="m-block" role="tab">ブロック</button>
+    <button id="m-frame" role="tab">壁</button>
+  </div>
+  <div id="whoBox">
+    <div id="whoBtns" class="sub fit">
+      <button data-w="1st">1st</button><button data-w="2nd">2nd</button>
+      <button data-w="3rd">3rd</button><button data-w="4th">4th</button>
+    </div>
+    <p id="det" class="det" aria-live="polite"></p>
+  </div>
+  <div id="blockBox" hidden>
+    <div id="blockBtns" class="sub">
+      <button id="add" class="primary">＋ 通常ブロック</button>
+      <button id="addOnce" class="primary">＋ 一度だけ反射</button>
+      <button id="tog">選択の種類を切替</button>
+      <button id="del" class="danger">選択を削除</button>
+    </div>
+    <div class="sub">
+      <button id="autoB" class="primary">ブロックを自動検出</button>
+      <button id="clearB" class="danger">全ブロック削除</button>
+    </div>
+    <p id="blkMsg" class="det" aria-live="polite"></p>
+    <div class="sub"><button id="snapT">連続配置(スナップ)モード</button></div>
+    <div id="brushBtns" class="sub fit" hidden>
+      <button id="br-normal">通常</button>
+      <button id="br-once">一度だけ反射</button>
+      <button id="br-erase" class="danger">消す</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="line">
+      <span>反射数</span>
+      <div class="stepper">
+        <button id="bm" aria-label="反射数を減らす">−</button>
+        <output id="bn" aria-live="polite">7</output>
+        <button id="bp" aria-label="反射数を増やす">＋</button>
+      </div>
+    </div>
+    <div class="line">
+      <span>角度 <b id="deg" style="color:var(--ink);font-variant-numeric:tabular-nums"></b></span>
+      <div class="stepper">
+        <button id="dec" aria-label="反時計回りに1段">↺</button>
+        <button id="inc" aria-label="時計回りに1段">↻</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* 基準: iPhone 828px幅のスクショ(キャラ中心が当たる壁)
+   左37 右791 上343 下1195 → フィールド全体は幅828 × 高さ926 */
+const REF_W = 828, FIELD_H = 926, INSET = 37, PANEL_GAP = 13;
+// ブロックの大きさ(幅828基準)。このステージの実物(スクショ幅1170で 横140×縦147)から測定
+const BLOCK_W = 99, BLOCK_H = 104, PITCH = 104;   // PITCH: ブロックのマス目の間隔(幅828基準)
+const FB_FRAC = 0.6885;   // フィールド下端の高さ(画像の高さに対する比率)。自動検出に失敗したときの値
+const STEP = 0.35;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+
+let img = null, W = 828, H = 1792;
+let crop = null;   // 表示する切り抜き範囲(画像座標)。プレイ画面(フィールド)だけ
+let fx = 0, fb = 1232;
+let p = {x: 530, y: 1040};
+let theta = 320, aimStart = null, aimNow = null;
+let bounce = 7;
+let blocks = [], sel = -1;   // ブロック {x, y, once}: onceは「一度反射したら透過」
+let snapOn = false, brush = 'normal', paint = null;
+const SEG_COLORS = ['#bccaff', '#ffd84a', '#ff9ad5', '#8dffb0', '#ffa65c', '#c79bff'];   // 5反射ごとに色を変える
+let mode = 'pos', drag = null, last = null;
+
+
+const k = () => W / REF_W;
+const snap = d => ((Math.round(d / STEP) * STEP) % 360 + 360) % 360;
+
+function bounds() {
+  const s = k(), i = INSET * s;
+  return {L: fx + i, R: fx + W - i, T: fb - FIELD_H * s + i, B: fb - i};
+}
+
+/* ブロックは「半辺 h+r の正方形」として扱い、当たった面で必ず平らに反射 */
+function blockHit(x, y, dx, dy, c, r, hw, hh) {
+  const ex = hw + r, ey = hh + r;
+  const slab = (o, d, lo, hi) => d === 0 ? (o > lo && o < hi ? [-Infinity, Infinity] : null)
+    : [Math.min((lo - o) / d, (hi - o) / d), Math.max((lo - o) / d, (hi - o) / d)];
+  const sx = slab(x, dx, c.x - ex, c.x + ex), sy = slab(y, dy, c.y - ey, c.y + ey);
+  if (!sx || !sy) return null;
+  const t = Math.max(sx[0], sy[0]);
+  if (t <= 1e-7 || t >= Math.min(sx[1], sy[1])) return null;
+  const both = Math.abs(sx[0] - sy[0]) < 1e-9;
+  return {t, flipX: both || sx[0] > sy[0], flipY: both || sy[0] > sx[0]};
+}
+
+function trace() {
+  const {L, R, T, B} = bounds();
+  const r = INSET * k(), hw = BLOCK_W * k() / 2, hh = BLOCK_H * k() / 2;
+  let x = Math.min(Math.max(p.x, L), R), y = Math.min(Math.max(p.y, T), B);
+  const a = theta * Math.PI / 180;
+  let dx = Math.sin(a), dy = -Math.cos(a);
+  const pts = [{x, y}];
+  const used = new Set();   // 一度反射して透過状態になったブロック
+  for (let i = 0; i <= bounce; i++) {
+    const tx = dx > 0 ? (R - x) / dx : dx < 0 ? (L - x) / dx : Infinity;
+    const ty = dy > 0 ? (B - y) / dy : dy < 0 ? (T - y) / dy : Infinity;
+    const tw = Math.min(tx, ty);
+    let bh = null;
+    for (let ci = 0; ci < blocks.length; ci++) {
+      if (blocks[ci].once && used.has(ci)) continue;
+      const q = blockHit(x, y, dx, dy, blocks[ci], r, hw, hh);
+      if (q && (!bh || q.t < bh.t)) { bh = q; bh.i = ci; }
+    }
+    if (bh && bh.t < tw - 1e-9) {
+      x += dx * bh.t; y += dy * bh.t;
+      pts.push({x, y});
+      if (blocks[bh.i].once) used.add(bh.i);
+      if (bh.flipX) dx = -dx;
+      if (bh.flipY) dy = -dy;
+    } else {
+      x += dx * tw; y += dy * tw;
+      pts.push({x, y});
+      if (Math.abs(tx - ty) < 1e-9) { dx = -dx; dy = -dy; }
+      else if (tx < ty) dx = -dx; else dy = -dy;
+    }
+  }
+  return pts;
+}
+
+/* 下の金色パネルの上端を探して、壁の縦位置を合わせる */
+function detectField() {
+  fx = 0;
+  try {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d', {willReadFrequently: true});
+    g.drawImage(img, 0, 0);
+    const step = Math.max(2, Math.round(W / 100));
+    for (let y = Math.round(H * .4); y < H * .95; y++) {
+      const row = g.getImageData(0, y, W, 1).data;
+      let hit = 0, tot = 0;
+      for (let x = 0; x < W; x += step) {
+        const r = row[x * 4], gr = row[x * 4 + 1], b = row[x * 4 + 2];
+        tot++; if (r > 200 && gr > 130 && gr < 215 && b < 90) hit++;
+      }
+      if (hit / tot > .8) {
+        const cand = y - PANEL_GAP * k();
+        // 想定の位置から大きく外れたら(光の演出などの誤検出)、使わずに標準の位置にする
+        if (Math.abs(cand - H * FB_FRAC) < H * .025) { fb = cand; return; }
+        break;
+      }
+    }
+  } catch (e) {}
+  fb = H * FB_FRAC;
+}
+
+/* プレイしている部分(壁のモデルと同じフィールド矩形)だけを表示。「壁」タブだけ全体を表示 */
+function updateCrop() {
+  const y0 = Math.max(0, fb - FIELD_H * k()), x0 = Math.max(0, fx), x1 = Math.min(W, fx + W);
+  const h = Math.min(H, fb) - y0;
+  crop = (h > 50 && x1 - x0 > 50) ? {x: x0, y: y0, w: x1 - x0, h} : null;
+}
+function getView() { return crop && mode !== 'frame' ? crop : {x: 0, y: 0, w: W, h: H}; }
+
+function resize() {
+  const v = getView(), cssW = $('stage').clientWidth, dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(cssW * dpr);
+  cv.height = Math.round(cssW * v.h / v.w * dpr);
+  cv.style.height = (cssW * v.h / v.w) + 'px';
+  draw();
+}
+
+function hex(cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i;
+    ctx[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a));
+  }
+  ctx.closePath();
+}
+
+function seg(a, b, color, w) {
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = color; ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+}
+
+function arrow(cx, cy, ang, s) {
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang);
+  ctx.beginPath();
+  ctx.moveTo(62 * s, 0); ctx.lineTo(112 * s, -17 * s); ctx.lineTo(160 * s, -17 * s);
+  ctx.lineTo(160 * s, 17 * s); ctx.lineTo(112 * s, 17 * s); ctx.closePath();
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.lineWidth = 2.5 * s; ctx.strokeStyle = '#111'; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.restore();
+}
+
+function draw() {
+  const v = getView(), sc = cv.width / v.w, s = k();
+  ctx.setTransform(sc, 0, 0, sc, -v.x * sc, -v.y * sc);
+  ctx.clearRect(0, 0, W, H);
+  if (img) ctx.drawImage(img, 0, 0, W, H);
+  else { ctx.fillStyle = 'rgba(128,140,150,.15)'; ctx.fillRect(0, 0, W, H); }
+
+  const pts = trace(), n = pts.length;
+
+  if (mode === 'frame') {
+    ctx.setLineDash([12 * s, 8 * s]); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#4fe3e8';
+    ctx.strokeRect(fx, fb - FIELD_H * s, W, FIELD_H * s); ctx.setLineDash([]);
+  }
+
+  // ブロック(緑の枠)
+  const hbx = BLOCK_W * s / 2, hby = BLOCK_H * s / 2;
+  blocks.forEach((c, i) => {
+    const on = mode === 'block' && i === sel;
+    if (on) { ctx.fillStyle = 'rgba(25,230,25,.18)'; ctx.fillRect(c.x - hbx, c.y - hby, hbx * 2, hby * 2); }
+    ctx.lineWidth = 4 * s; ctx.strokeStyle = c.once ? '#ffd400' : '#19e619';
+    if (c.once) ctx.setLineDash([14 * s, 8 * s]);
+    ctx.strokeRect(c.x - hbx, c.y - hby, hbx * 2, hby * 2);
+    ctx.setLineDash([]);
+    if (c.once) {
+      ctx.font = `bold ${30 * s}px "Hiragino Sans",sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 5 * s; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText('1', c.x, c.y);
+      ctx.fillStyle = '#ffd400'; ctx.fillText('1', c.x, c.y);
+    }
+    if (on) {
+      ctx.setLineDash([10 * s, 6 * s]); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#fff';
+      ctx.strokeRect(c.x - hbx, c.y - hby, hbx * 2, hby * 2);
+      ctx.setLineDash([]);
+    }
+  });
+
+  // 反射線: 5反射ごとに色替え、最後=白、0反射の赤線は延長して最前面
+  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 3 * s;
+  for (let i = 0; i < n - 1; i++) {
+    seg(pts[i], pts[i + 1], i === n - 2 ? '#ffffff' : SEG_COLORS[Math.floor(i / 5) % SEG_COLORS.length], 5 * s);
+  }
+  {
+    const ang = theta * Math.PI / 180, ux = Math.sin(ang), uy = -Math.cos(ang), P = pts[0];
+    const top = fb - FIELD_H * s;
+    const ext = (vx, vy) => Math.min(
+      vx > 0 ? (fx + W - P.x) / vx : vx < 0 ? (fx - P.x) / vx : Infinity,
+      vy > 0 ? (fb - P.y) / vy : vy < 0 ? (top - P.y) / vy : Infinity);
+    const t1 = ext(ux, uy), t2 = ext(-ux, -uy);
+    seg({x: P.x - ux * t2, y: P.y - uy * t2}, {x: P.x + ux * t1, y: P.y + uy * t1}, '#e83f33', 6.5 * s);
+  }
+  ctx.shadowBlur = 0;
+
+  // 壁・ブロックに当たる位置の六角形
+  ctx.lineJoin = 'round';
+  for (let i = 1; i < n; i++) {
+    hex(pts[i].x, pts[i].y, 36 * s);
+    ctx.fillStyle = 'rgba(79,227,232,.10)'; ctx.fill();
+    ctx.lineWidth = 4 * s; ctx.strokeStyle = '#4fe3e8'; ctx.stroke();
+  }
+
+  // ボール: 斜め4方向の矢印 + 赤い輪
+  [45, 135, 225, 315].forEach(d => arrow(p.x, p.y, d * Math.PI / 180, s));
+  ctx.beginPath(); ctx.arc(p.x, p.y, 64 * s, 0, 7);
+  ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fill();
+  ctx.lineWidth = 5 * s; ctx.strokeStyle = '#e83f33'; ctx.stroke();
+
+  // 方向モード: 引っ張っている間だけ、押した点と指を結ぶ線を表示
+  if (drag === 'aim' && aimStart && aimNow) {
+    ctx.lineCap = 'round'; ctx.setLineDash([]);
+    ctx.lineWidth = 4 * s; ctx.strokeStyle = 'rgba(255,255,255,.8)';
+    ctx.beginPath(); ctx.moveTo(aimStart.x, aimStart.y); ctx.lineTo(aimNow.x, aimNow.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(aimStart.x, aimStart.y, 14 * s, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(aimNow.x, aimNow.y, 9 * s, 0, 7); ctx.fillStyle = '#e83f33'; ctx.fill();
+  }
+
+  $('deg').textContent = theta.toFixed(2) + '°';
+  $('bn').textContent = bounce;
+}
+
+function pos(e) {
+  const b = cv.getBoundingClientRect(), v = getView();
+  return {x: v.x + (e.clientX - b.left) / b.width * v.w, y: v.y + (e.clientY - b.top) / b.height * v.h};
+}
+
+// ボール中心まわりの指の角度(度・真上0°で時計回り)。近すぎるときは null
+function phiOf(q) {
+  const vx = q.x - p.x, vy = q.y - p.y;
+  if (Math.hypot(vx, vy) < 70 * k()) return null;
+  return Math.atan2(vx, -vy) * 180 / Math.PI;
+}
+
+/* ===== 連続配置(スナップ) =====
+   既存ブロックの近くなら、そのブロックにぴったり隣接するマスに揃える。なければ壁基準のマス。 */
+function gridAnchor(q) {
+  const size = Math.max(BLOCK_W, BLOCK_H) * k();
+  let best = null, bd = Infinity;
+  for (const b of blocks) { const d = Math.hypot(b.x - q.x, b.y - q.y); if (d < bd) { bd = d; best = b; } }
+  if (best && bd < size * 3) return {x: best.x, y: best.y};
+  const {L, T} = bounds();
+  return {x: L + BLOCK_W * k() / 2, y: T + BLOCK_H * k() / 2};
+}
+function applyBrush(q) {
+  const sw = BLOCK_W * k(), sh = BLOCK_H * k(), a = paint.a;
+  const c = {x: a.x + Math.round((q.x - a.x) / sw) * sw, y: a.y + Math.round((q.y - a.y) / sh) * sh};
+  const key = c.x.toFixed(1) + ',' + c.y.toFixed(1);
+  if (key === paint.key) return;
+  paint.key = key;
+  const near = b => Math.abs(b.x - c.x) < sw * .5 && Math.abs(b.y - c.y) < sh * .5;
+  if (brush === 'erase') { blocks = blocks.filter(b => !near(b)); sel = -1; return; }
+  const {L, R, T, B} = bounds();
+  if (c.x < L || c.x > R || c.y < T || c.y > B) return;
+  const ex = blocks.find(near);
+  if (ex) ex.once = brush === 'once';
+  else { blocks.push({x: c.x, y: c.y, once: brush === 'once'}); }
+  sel = -1;
+}
+function paintTo(q) {   // 指が速く動いても隙間ができないよう、前の位置から補間
+  const size = Math.min(BLOCK_W, BLOCK_H) * k(), from = paint.q;
+  const n = Math.max(1, Math.ceil(Math.hypot(q.x - from.x, q.y - from.y) / (size / 3)));
+  for (let i = 1; i <= n; i++) applyBrush({x: from.x + (q.x - from.x) * i / n, y: from.y + (q.y - from.y) * i / n});
+  paint.q = q;
+}
+
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  const q = pos(e);
+  last = q; drag = mode;
+  if (mode === 'block' && snapOn) {
+    paint = {a: gridAnchor(q), key: null, q};
+    paintTo(q);
+  } else if (mode === 'block') {
+    const hbx = BLOCK_W * k() / 2, hby = BLOCK_H * k() / 2;
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (Math.abs(q.x - blocks[i].x) <= hbx && Math.abs(q.y - blocks[i].y) <= hby) { sel = i; break; }
+    }
+  } else if (mode === 'aim') { aimStart = q; aimNow = q; }
+  draw();
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const q = pos(e), mx = q.x - last.x, my = q.y - last.y;
+  if (drag === 'frame') { fx += mx; fb += my; }
+  else if (drag === 'pos') { p = {x: p.x + mx, y: p.y + my}; }
+  else if (drag === 'block') {
+    if (paint) paintTo(q);
+    else if (sel >= 0) { blocks[sel].x += mx; blocks[sel].y += my; }
+  }
+  else {
+    // 押した点から指への向きの「反対」が狙いの方向(最初の小さな動きは無視)
+    aimNow = q;
+    const vx = aimStart.x - q.x, vy = aimStart.y - q.y;
+    if (Math.hypot(vx, vy) > 12 * k()) theta = snap(Math.atan2(vx, -vy) * 180 / Math.PI);
+  }
+  last = q;
+  draw();
+});
+['pointerup', 'pointercancel'].forEach(t => cv.addEventListener(t, () => { drag = null; aimStart = null; paint = null; draw(); }));
+
+function updateBlockUI() {
+  $('snapT').classList.toggle('on', snapOn);
+  $('blockBtns').hidden = snapOn;
+  $('brushBtns').hidden = !snapOn;
+  ['normal', 'once', 'erase'].forEach(b => $('br-' + b).classList.toggle('on', brush === b));
+}
+function setMode(m) {
+  mode = m;
+  ['pos', 'aim', 'block', 'frame'].forEach(x => $('m-' + x).classList.toggle('on', x === m));
+  $('blockBox').hidden = m !== 'block';
+  $('whoBox').hidden = !(m === 'pos' || m === 'aim');
+  updateBlockUI();
+  if (m !== 'frame' && img) updateCrop();   // 壁を動かしたあとは、切り抜きも合わせる
+  resize();
+}
+['pos', 'aim', 'block', 'frame'].forEach(x => $('m-' + x).onclick = () => setMode(x));
+const addBlock = once => {
+  blocks.push({x: fx + W / 2, y: fb - FIELD_H * k() / 2, once});
+  sel = blocks.length - 1; draw();
+};
+$('add').onclick = () => addBlock(false);
+$('addOnce').onclick = () => addBlock(true);
+$('tog').onclick = () => { if (sel >= 0) { blocks[sel].once = !blocks[sel].once; draw(); } };
+$('snapT').onclick = () => { snapOn = !snapOn; updateBlockUI(); draw(); };
+['normal', 'once', 'erase'].forEach(b => $('br-' + b).onclick = () => { brush = b; updateBlockUI(); });
+$('del').onclick = () => { if (sel >= 0) { blocks.splice(sel, 1); sel = -1; draw(); } };
+
+$('inc').onclick = () => { theta = snap(theta + STEP); draw(); };
+$('dec').onclick = () => { theta = snap(theta - STEP); draw(); };
+$('bp').onclick = () => { bounce = Math.min(30, bounce + 1); draw(); };
+$('bm').onclick = () => { bounce = Math.max(1, bounce - 1); draw(); };
+
+/* ===== 1st〜4th の文字を探して、そのキャラの中心にボールをセット ===== */
+const TPL = {"2nd":[{"w":50,"h":21,"b":"B/AAAAAPg/4AAAAD4f/AAAAA+P/4AAAAPmA+AAAAD4APgAcAA+AD5+/gB/gA8f/4B/4AfH//A++APh/Pw+PgDwfB8PD4B8HwfHw+A+B8Hx4HgfAPB8+B4PgDwfPgeDwA8Hz4Hh4ePB4+D4//jwePz+RgIkEhDg4AAAAIAHH//BgOB4MA"},{"w":50,"h":21,"b":"B/AAAAAPg/4AAAAD4//AAAAA+f/4AAAAPmA+AAAAD4APgAYAA+AD58/gB/gB8f/4B/4AfH//B++APh/Pw+PgDwfB8fD4B8HwfHg+A8B8Hz4PgfAPB8+D4PgDwfPg+DwA8Hz4Ph4cPB4+D4//jgOPz+BgIgAhHg4ACIAIQDH//BgOB8MA"}],"3rd":[{"w":45,"h":22,"b":"AIHAAAAAP5wAAB+H/gAAAPx/+AAAB+eHwAAAPiA/AAAA8AHwcMAPgA+H3gH8APg/8H/gDwH/h88B+A/EfHgf8HwHw8APw+B8HgAfHwPg8AD8+B4HgAfnwfA8AD4+D4HgB/HwPg8Afw+B+/gcYGQIMDc8AyAgUU4ADgCEEA=="},{"w":48,"h":22,"b":"B+AAAAHgD/AAAYPwP/gAABPgf/wAAAPg4HwAAAPnAHwAAAPhAHw+cAPgAPg+8D/gAfA/8P/gA+A/8fHhD/A+A+HgD/g+A8HgAHw+B8HgAD4+B4HgAD4+D4HgAD4+D4HgAH4+D4HgAPw+B8PgBgg2BHwwEFAiAAAAyIAcAAQA4AAAAPDA"}],"1st":[{"w":38,"h":21,"b":"AcAAAAA/AAAAB/wAAAM/8AAAHB/AAADgHwDgB4B8H/g/wfD/+f8Hw8fn/B8PBweAfD8MHgHwfwB4B8D+AeAfAP4HgHwB/B4B8AH4eAfDA/HgHwcPx5BsCiERwDAQCAIAAAEAQA=="}],"4th":[{"w":44,"h":24,"b":"AfAAB8AAHwAAfAAD4AGHwAA+ADh8AAfAB4fAAH+A+nwYD/wf98/g98P/ff4PfD/3//HjwPh/P548DwfB88PA8HwfPTwPB8n3g9DwPN94/48j3ff/+PI93v//jwPJ7//w8jweACwM4gAgAkBEIAIAAACAAABgAQAAAAYAAAAAAHAgAAAA"}]};   // 赤い文字のマスク見本(幅585に縮小した画像用、1bitを base64)
+const MATCH_MIN = 0.78;
+let cache = {img: null, res: null};
+
+function blur3(m, w, h) {
+  const a = new Float32Array(m.length), b = new Float32Array(m.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    a[i] = (m[y * w + Math.max(x - 1, 0)] + 2 * m[i] + m[y * w + Math.min(x + 1, w - 1)]) / 4;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    b[i] = (a[Math.max(y - 1, 0) * w + x] + 2 * a[i] + a[Math.min(y + 1, h - 1) * w + x]) / 4;
+  }
+  return b;
+}
+
+function unpackTpl(t) {
+  const bin = atob(t.b), m = new Float32Array(t.w * t.h);
+  for (let i = 0; i < m.length; i++) m[i] = (bin.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
+  const tb = blur3(m, t.w, t.h), pts = [];
+  let e = 0;
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
+    const v = tb[y * t.w + x]; e += v * v;
+    if (v > 0.01) pts.push([x, y, v]);
+  }
+  return {w: t.w, h: t.h, pts, e};
+}
+
+const HUE_NAMES = ['赤', '青', '黄', '緑'];
+let TPLS = null;
+function detectFromPixels(d, w, h, ws) {
+  if (!TPLS) { TPLS = {}; for (const l of Object.keys(TPL)) TPLS[l] = TPL[l].map(unpackTpl); }
+  // 1) 画素を色ごと(赤・青・黄・緑)に振り分けて、色別の「文字マスク」を作る
+  const n = w * h, masks = HUE_NAMES.map(() => new Float32Array(n)), cnt = HUE_NAMES.map(() => 0);
+  for (let i = 0; i < n; i++) {
+    const r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2];
+    if (r > 140 && g < 90 && b < 100 && r - g > 80) { masks[0][i] = 1; cnt[0]++; continue; }
+    const mx = Math.max(r, g, b), dl = mx - Math.min(r, g, b);
+    if (dl === 0) continue;
+    let hu = mx === r ? ((g - b) / dl + 6) % 6 : mx === g ? (b - r) / dl + 2 : (r - g) / dl + 4;
+    hu *= 60;
+    // 黄色い文字は上が明るい黄色、下が暗い金色のグラデーションなので、暗めの金色(茶寄り)まで拾う
+    if (mx >= 105 && dl >= 0.6 * mx && hu >= 33 && hu <= 62) { masks[2][i] = 1; cnt[2]++; continue; }
+    if (mx < 150 || dl < 0.55 * mx) continue;          // 暗い・くすんだ色は対象外
+    if (hu >= 195 && hu <= 255) { masks[1][i] = 1; cnt[1]++; }
+    else if (hu >= 38 && hu <= 68 && mx >= 200) { masks[2][i] = 1; cnt[2]++; }
+    else if (hu >= 85 && hu <= 160) { masks[3][i] = 1; cnt[3]++; }
+  }
+  const W1 = w + 1, yMin = Math.floor(h * .15), yMax = Math.floor(h * .70);
+  const out = {};
+  for (const label of Object.keys(TPL)) out[label] = {s: -1};
+  // 2) 色ごとに同じ形の見本と照合(その色の画素がほとんど無ければ飛ばして時間を節約)
+  masks.forEach((m0, ci) => {
+    if (cnt[ci] < 40) return;
+    const m = blur3(m0, w, h), ii = new Float64Array(W1 * (h + 1));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const v = m[y * w + x];
+      ii[(y + 1) * W1 + x + 1] = v * v + ii[y * W1 + x + 1] + ii[(y + 1) * W1 + x] - ii[y * W1 + x];
+    }
+    const energy = (t, x, y) => ii[(y + t.h) * W1 + x + t.w] - ii[y * W1 + x + t.w] - ii[(y + t.h) * W1 + x] + ii[y * W1 + x];
+    const score = (t, x, y, ew) => {
+      let corr = 0;
+      for (const [dx, dy, v] of t.pts) corr += v * m[(y + dy) * w + x + dx];
+      return corr / Math.sqrt(t.e * ew + 1e-6);
+    };
+    for (const label of Object.keys(TPLS)) {
+      for (const t of TPLS[label]) {
+        let cb = null;   // 2px飛びで粗く探す
+        for (let y = yMin; y + t.h <= yMax; y += 2) for (let x = 0; x + t.w <= w; x += 2) {
+          const ew = energy(t, x, y);
+          if (ew < 0.35 * t.e) continue;
+          const s = score(t, x, y, ew);
+          if (!cb || s > cb.s) cb = {s, x, y};
+        }
+        if (!cb) continue;
+        for (let y = Math.max(yMin, cb.y - 2); y <= Math.min(yMax - t.h, cb.y + 2); y++)   // 1px刻みで詰める
+          for (let x = Math.max(0, cb.x - 2); x <= Math.min(w - t.w, cb.x + 2); x++) {
+            const s = score(t, x, y, energy(t, x, y));
+            if (s > out[label].s) out[label] = {s, x: (x + t.w / 2) / ws, y: (y + t.h / 2) / ws, c: HUE_NAMES[ci]};
+          }
+      }
+    }
+  });
+  return out;
+}
+
+function detectLabels() {
+  const w = 585, ws = w / W, h = Math.round(H * ws);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', {willReadFrequently: true});
+  g.drawImage(img, 0, 0, w, h);
+  return detectFromPixels(g.getImageData(0, 0, w, h).data, w, h, ws);
+}
+
+// 画像を読み込んだ直後にバックグラウンドで認識しておく(ボタンを押す頃には終わっている)
+let pending = null;
+function prefetch() {
+  const target = img;
+  say('認識中…');
+  pending = new Promise(res => setTimeout(() => {
+    try { cache = {img: target, res: detectLabels()}; say(''); }
+    catch (e) { cache = {img: target, res: null}; say('認識エラー'); }
+    res();
+  }, 60));
+}
+
+const say = t => { $('det').textContent = t; };
+async function gotoLabel(label) {
+  if (!img) { say('画像が未選択です'); return; }
+  if (cache.img !== img) { if (!pending) prefetch(); await pending; }
+  if (!cache.res) { say('認識できません'); return; }
+  const r = cache.res[label];
+  if (r && r.s >= MATCH_MIN) {
+    p = {x: r.x, y: r.y + 42 * k()};      // 文字の中心から、キャラ中心までの距離(実測)
+    say('');
+    draw();
+  } else {
+    say(`${label} が見つかりません`);
+  }
+}
+document.querySelectorAll('#whoBtns button').forEach(b => b.onclick = () => gotoLabel(b.dataset.w));
+
+/* ===== ブロックの自動検出 =====
+   ブロックは「暗い青灰色(低彩度)」の四角。背景(明るい青灰・緑・ベージュ)や穴(彩度の高い紫)とは色で分けられる。
+   1) フィールド内だけで暗い低彩度の画素マスクを作る
+   2) 1ブロックぶんの矩形(幅99×高104)でマスクの占有率を全位置で計算(積分画像)
+   3) 占有率の高い順に採用(重なる候補は捨てる)→ 隣接ブロックとはマス目(間隔104)に揃えて中心を確定
+   文字やキャラで一部隠れていても、占有率が高ければ検出できる。 */
+function detectBlocksFromPixels(d, w, h, bd, ws) {
+  const L = Math.round(bd.L * ws), R = Math.round(bd.R * ws), T = Math.round(bd.T * ws), B = Math.round(bd.B * ws);
+  const bw = BLOCK_W, bh = BLOCK_H;   // 縮小画像は幅828なので、基準寸法がそのまま使える
+  const pw = PITCH, ph = PITCH;   // マス目の間隔
+  const W1 = w + 1, ii = new Int32Array(W1 * (h + 1)), dk = new Int32Array(W1 * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let run = 0, run2 = 0;
+    for (let x = 0; x < w; x++) {
+      let v = 0, v2 = 0;
+      if (x >= L && x < R && y >= T - bh && y < B) {
+        const i = (y * w + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2];
+        const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        if (mx < 70 && mx - mn < 40) v2 = 1;   // ブロックの下に落ちる、ほぼ黒の影(色味は問わない)
+        if (v2 || (mx < 150 && mx - mn < 50 && b >= r - 2 && b >= g - 2)) v = 1;
+      }
+      run += v; run2 += v2;
+      ii[(y + 1) * W1 + x + 1] = ii[y * W1 + x + 1] + run;
+      dk[(y + 1) * W1 + x + 1] = dk[y * W1 + x + 1] + run2;
+    }
+  }
+  const box = (t, x0, y0, x1, y1) => t[y1 * W1 + x1] - t[y0 * W1 + x1] - t[y1 * W1 + x0] + t[y0 * W1 + x0];
+  const sum = (x0, y0, x1, y1) => box(ii, x0, y0, x1, y1);
+  // 3) 中心位置ごとの照合。実測したブロックの絵は「幅99 × (本体104 + 下に落ちる影8)」。
+  //    ・矩形内の占有率(フィールド外にはみ出す分は面積から除く)
+  //    ・下端の黒い影の帯
+  //    ・左右と真下のすぐ外側が「ブロックではない色(背景)」であること  ← これで中心が1px単位で決まる
+  const SH = 8, hw = bw / 2, hh = bh / 2;
+  const nonMask = (x0, y0, x1, y1) => {
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(w, x1); y1 = Math.min(h, y1);
+    return x1 > x0 && y1 > y0 ? 1 - box(ii, x0, y0, x1, y1) / ((x1 - x0) * (y1 - y0)) : 1;
+  };
+  const evalAt = (cx, cy, ext) => {
+    const x0 = Math.round(cx - hw), x1 = x0 + bw, y0 = Math.round(cy - hh), y1 = Math.round(cy + hh) + SH;
+    const cx0 = Math.max(x0, L), cy0 = Math.max(y0, ext ? T - bh : T), cx1 = Math.min(x1, R), cy1 = Math.min(y1, B);
+    const area = (cx1 - cx0) * (cy1 - cy0);
+    if (cx1 <= cx0 || cy1 <= cy0 || area < bw * (bh + SH) * 0.5) return null;
+    const sy1 = Math.min(y1, B), sy0 = sy1 - 10;
+    return {
+      sc: box(ii, cx0, cy0, cx1, cy1) / area,
+      sh: box(dk, cx0, sy0, cx1, sy1) / ((cx1 - cx0) * 10),
+      full: y1 <= B + 2,
+      ringL: nonMask(x0 - 4, y0 + 8, x0 - 1, y1 - 20), ringR: nonMask(x1 + 1, y0 + 8, x1 + 4, y1 - 20),
+      ringB: nonMask(x0 + 8, y1 + 1, x1 - 8, y1 + 5),
+    };
+  };
+  const seeds = [];
+  for (let cy = T; cy < B; cy++) for (let cx = L; cx < R; cx++) {
+    const e = evalAt(cx, cy);
+    if (!e || !e.full || e.sc < 0.62 || e.sh < 0.6 || e.ringB < 0.6 || Math.max(e.ringL, e.ringR) < 0.6) continue;
+    seeds.push({x: cx, y: cy, s: e.sc + 0.3 * e.sh + 0.4 * (e.ringL + e.ringR + e.ringB)});
+  }
+  seeds.sort((a, b) => b.s - a.s);
+
+  // 4) 確からしい順に採用。同じ塊のブロックは「基準ブロックのマス目」に揃え、ずれた候補・重なる候補は捨てる
+  //    採用したらすぐに隣のマスへ広げる(文字やキャラで隠れたブロックも、占有率が高ければ補う)
+  const TOL = 7, clusters = [];
+  const overlaps = (x, y) => clusters.some(c => [...c.cells.values()].some(([ci, cj]) =>
+    Math.abs(x - (c.ax + ci * pw)) < pw * 0.9 && Math.abs(y - (c.ay + cj * ph)) < ph * 0.9));
+  const expand = c => {
+    const queue = [...c.cells.values()];
+    while (queue.length) {
+      const [ci, cj] = queue.pop();
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ni = ci + di, nj = cj + dj, key = ni + ',' + nj, nx = c.ax + ni * pw, ny = c.ay + nj * ph;
+        if (c.cells.has(key) || ny < T - 40 || (dj !== 0 && (nx - hw < L - 2 || nx + hw > R + 2))) continue;   // 縦に積むのは、壁に切られていないマスだけ
+        if (overlaps(nx, ny)) continue;
+        const e = evalAt(nx, ny, dj < 0);
+        // 積み重ねの隣は 0.45 以上、横の隣は(壁に切られていなければ)文字で隠れていても 0.4 以上、壁際は 0.62 以上
+        const inside = nx - hw >= L - 2 && nx + hw <= R + 2, need = dj !== 0 ? 0.45 : inside ? 0.4 : 0.62;
+        if (e && e.sc >= need) { c.cells.set(key, [ni, nj]); queue.push([ni, nj]); }
+      }
+    }
+  };
+  // 塊ごとに基準位置を微調整: 各ブロックの左右の隙間と、積み重ねの一番下の影の縁がもっとも合う位置にする
+  const refine = c => {
+    const cells = [...c.cells.values()];
+    let best = null;
+    for (let dy = -10; dy <= 10; dy++) for (let dx = -4; dx <= 4; dx++) {
+      let tot = 0;
+      for (const [ci, cj] of cells) {
+        const e = evalAt(c.ax + dx + ci * pw, c.ay + dy + cj * ph, true);
+        if (!e) { tot -= 3; continue; }
+        tot += e.sc + e.ringL + e.ringR;
+        if (!c.cells.has(ci + ',' + (cj + 1)) && e.full) tot += 2 * e.ringB + e.sh;   // 一番下のブロックだけ、真下が背景であること
+      }
+      if (!best || tot > best.tot) best = {tot, dx, dy};
+    }
+    c.ax += best.dx; c.ay += best.dy;
+  };
+  for (const sd of seeds) {
+    let joined = false;
+    for (const c of clusters) {
+      const gi = Math.round((sd.x - c.ax) / pw), gj = Math.round((sd.y - c.ay) / ph);
+      if (Math.abs(sd.x - (c.ax + gi * pw)) <= TOL && Math.abs(sd.y - (c.ay + gj * ph)) <= TOL) { joined = true; break; }
+    }
+    if (joined || overlaps(sd.x, sd.y)) continue;
+    const c = {ax: sd.x, ay: sd.y, cells: new Map([['0,0', [0, 0]]])};
+    expand(c); refine(c); clusters.push(c);
+  }
+  const out = [];
+  for (const c of clusters) for (const [i, j] of c.cells.values()) out.push({x: (c.ax + i * pw) / ws, y: (c.ay + j * ph) / ws});
+  return out;
+}
+
+const blkSay = t => { $('blkMsg').textContent = t; };
+function detectBlocks() {
+  const w = 828, ws = w / W, h = Math.round(H * ws);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', {willReadFrequently: true});
+  g.drawImage(img, 0, 0, w, h);
+  const bd = bounds();
+  return detectBlocksFromPixels(g.getImageData(0, 0, w, h).data, w, h, bd, ws);
+}
+$('autoB').onclick = () => {
+  if (!img) { blkSay('画像が未選択です'); return; }
+  let found;
+  try { found = detectBlocks(); } catch (e) { blkSay('検出エラー'); return; }
+  const sw = BLOCK_W * k(), sh = BLOCK_H * k();
+  let added = 0;
+  for (const f of found) {   // すでに同じ場所にあるブロックは重ねない
+    if (blocks.some(b => Math.abs(b.x - f.x) < sw * .5 && Math.abs(b.y - f.y) < sh * .5)) continue;
+    blocks.push({x: f.x, y: f.y, once: false}); added++;
+  }
+  sel = -1; draw();
+  blkSay(!found.length ? 'ブロックが見つかりません' : added ? `${added}個のブロックを配置しました` : '新しく追加するブロックはありません(検出済み)');
+};
+$('clearB').onclick = () => { blocks = []; sel = -1; blkSay(''); draw(); };
+
+function loadBlob(f) {
+  const im = new Image();
+  im.onload = () => {
+    // ブロックはフィールド基準の座標で保持し、新しい画像でも同じ位置に置き直す
+    const oTop = fb - FIELD_H * k(), oX = fx, oK = k();
+    const rel = blocks.map(b => ({x: (b.x - oX) / oK, y: (b.y - oTop) / oK, once: b.once}));
+    img = im; W = im.naturalWidth; H = im.naturalHeight;
+    detectField();
+    updateCrop();
+    blocks = rel.map(b => ({x: fx + b.x * k(), y: fb - FIELD_H * k() + b.y * k(), once: b.once}));
+    p = {x: W * .64, y: fb - 190 * k()};
+    sel = -1;
+    $('stage').hidden = false; $('empty').hidden = true;
+    resize();
+    prefetch();
+  };
+  im.onerror = () => note('画像を読み込めません');
+  // blob: URL が使えない環境(公開ページなど)でも読めるよう、data: URL にして読み込む
+  const fr = new FileReader();
+  fr.onload = () => { im.src = fr.result; };
+  fr.onerror = () => note('画像を読み込めません');
+  fr.readAsDataURL(f);
+}
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  loadBlob(f);
+  $('loadMsg').textContent = '';
+});
+
+const note = t => { $('loadMsg').textContent = t; };
+
+addEventListener('resize', resize);
+setMode('pos');
+resize();
+</script>
+</body>
+</html>
